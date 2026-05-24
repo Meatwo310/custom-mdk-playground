@@ -23,9 +23,9 @@ https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}
 {% endif -%}
 
 {% for group, commits in commits | filter(attribute="merge_commit", value=false) | group_by(attribute="group") %}
-### {{ group | striptags | trim | upper_first }}
+### {{ group | striptags | trim }}
 {% for commit in commits %}
-- {% if commit.scope %}{% for scope in commit.scope | split(pat=",") %}`{{ scope | trim }}`{% if not loop.last %}, {% endif %}{% endfor %}: {% endif %}{{ commit.message | split(pat="\n") | first | upper_first | trim }}\
+- {% if commit.scope %}{% for scope in commit.scope | split(pat=",") %}`{{ scope | trim }}`{% if not loop.last %}, {% endif %}{% endfor %}: {% endif %}{{ commit.message | split(pat="\n") | first | trim }}\
 {% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.remote.pr_number }}){%- endif -%}
 {% endfor %}
 {% endfor %}
