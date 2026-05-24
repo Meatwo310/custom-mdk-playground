@@ -44,6 +44,15 @@ jobs:
             exit 1
           fi
 
+      - name: Fetch upstream template history
+        run: |
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream https://github.com/Meatwo310/custom-mdk.git
+          else
+            git remote add upstream https://github.com/Meatwo310/custom-mdk.git
+          fi
+          git fetch upstream main --tags
+
       - name: Detect platform projects
         id: detect
         run: |
@@ -67,6 +76,15 @@ jobs:
           test -n "$(find build/release/libs -maxdepth 1 -type f -name '*.jar' -print -quit)"
           ls -la build/release/libs
 
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: upstream/main..HEAD --unreleased --tag ${{ env.RELEASE_TAG }} --strip all
+        env:
+          OUTPUT: build/release/CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
       - name: Tag and push latest commit
         run: |
           git config user.name "github-actions[bot]"
@@ -78,5 +96,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          generate_release_notes: true
+          body_path: build/release/CHANGELOG.md
           files: build/release/libs/*.jar
