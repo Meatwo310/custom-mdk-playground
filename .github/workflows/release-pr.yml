@@ -82,6 +82,38 @@ jobs:
             echo "version=$NEXT_VERSION"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Setup JDK 25
+        if: ${{ steps.prepare.outputs.changed == 'true' }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Setup Gradle
+        if: ${{ steps.prepare.outputs.changed == 'true' }}
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Detect platform projects
+        if: ${{ steps.prepare.outputs.changed == 'true' }}
+        id: detect
+        run: |
+          chmod u+x ./gradlew
+          ./gradlew --configuration-cache --no-daemon writeCiBuildMatrix
+          JSON=$(<build/ci/build-matrix.json)
+          BUILD_TASKS=$(jq -r '.[] | ":\(.subproject):build"' <<< "$JSON" | xargs)
+          if [[ -z "$BUILD_TASKS" ]]; then
+            echo "::error::No platform projects were detected."
+            exit 1
+          fi
+          echo "build_tasks=$BUILD_TASKS" >> "$GITHUB_OUTPUT"
+          echo "::group::Platform projects"
+          jq . <<< "$JSON"
+          echo "::endgroup::"
+
+      - name: Build release pull request
+        if: ${{ steps.prepare.outputs.changed == 'true' }}
+        run: ./gradlew ${{ steps.detect.outputs.build_tasks }}
+
       - name: Create release pull request
         if: ${{ steps.prepare.outputs.changed == 'true' }}
         uses: peter-evans/create-pull-request@v8
