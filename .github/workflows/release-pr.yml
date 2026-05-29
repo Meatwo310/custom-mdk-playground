@@ -1,0 +1,114 @@
+name: Release PR
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - CHANGELOG.md
+      - version.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch upstream template history
+        run: |
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream https://github.com/Meatwo310/custom-mdk.git
+          else
+            git remote add upstream https://github.com/Meatwo310/custom-mdk.git
+          fi
+          git fetch upstream main --tags
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Prepare release files
+        id: prepare
+        run: |
+          CURRENT_VERSION=$(tr -d '[:space:]' < version.txt)
+          CURRENT_TAG="v$CURRENT_VERSION"
+
+          if git rev-parse --verify --quiet "refs/tags/$CURRENT_TAG" >/dev/null; then
+            RANGE="$CURRENT_TAG..HEAD"
+          else
+            RANGE="upstream/main..HEAD"
+          fi
+
+          : > .cliffignore
+          if [[ "$RANGE" != "upstream/main..HEAD" ]]; then
+            ALL_COMMITS=$(mktemp)
+            DOWNSTREAM_COMMITS=$(mktemp)
+            git rev-list "$RANGE" | sort > "$ALL_COMMITS"
+            git rev-list "$RANGE" --not upstream/main | sort > "$DOWNSTREAM_COMMITS"
+            comm -23 "$ALL_COMMITS" "$DOWNSTREAM_COMMITS" > .cliffignore
+          fi
+
+          mapfile -t commits < <(git rev-list --reverse "$RANGE" --not upstream/main)
+          BUMP=none
+          BREAKING_RE='^[a-zA-Z]+(\([^)]+\))?!:'
+          FEAT_RE='^feat(\([^)]+\))?:'
+          PATCH_RE='^(fix|perf)(\([^)]+\))?:'
+          for commit in "${commits[@]}"; do
+            SUBJECT=$(git show -s --format=%s "$commit")
+            BODY=$(git show -s --format=%B "$commit")
+            if [[ "$SUBJECT" =~ $BREAKING_RE ]] || grep -q '^BREAKING CHANGE:' <<< "$BODY"; then
+              BUMP=major
+            elif [[ "$SUBJECT" =~ $FEAT_RE ]] && [[ "$BUMP" != major ]]; then
+              BUMP=minor
+            elif [[ "$SUBJECT" =~ $PATCH_RE ]] && [[ "$BUMP" == none ]]; then
+              BUMP=patch
+            fi
+          done
+
+          if [[ "$BUMP" == none ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No releasable downstream commits were found."
+            exit 0
+          fi
+
+          IFS=. read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEXT_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          printf '%s\n' "$NEXT_VERSION" > version.txt
+          git cliff "$RANGE" --unreleased --tag "v$NEXT_VERSION" --strip header --prepend CHANGELOG.md
+
+          {
+            echo "changed=true"
+            echo "version=$NEXT_VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release pull request
+        if: ${{ steps.prepare.outputs.changed == 'true' }}
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: release/v${{ steps.prepare.outputs.version }}
+          delete-branch: true
+          add-paths: |
+            CHANGELOG.md
+            version.txt
+          commit-message: "release: バージョンを${{ steps.prepare.outputs.version }}に更新"
+          title: "release: v${{ steps.prepare.outputs.version }}"
+          body-path: CHANGELOG.md
