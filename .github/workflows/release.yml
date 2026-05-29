@@ -5,7 +5,6 @@ on:
     branches:
       - main
     paths:
-      - CHANGELOG.md
       - version.txt
   workflow_dispatch:
 
@@ -116,7 +115,7 @@ jobs:
             comm -23 "$ALL_COMMITS" "$DOWNSTREAM_COMMITS" > .cliffignore
           fi
 
-          git cliff "$RANGE" --unreleased --tag "$RELEASE_TAG" --strip all --output build/release/CHANGELOG.md
+          git cliff "$RANGE" --unreleased --tag "$RELEASE_TAG" --strip all --output build/release/RELEASE_NOTES.md
 
       - name: Tag and push latest commit
         run: |
@@ -129,5 +128,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          body_path: build/release/CHANGELOG.md
+          body_path: build/release/RELEASE_NOTES.md
           files: build/release/libs/*.jar

@@ -23,9 +23,9 @@ trim = true
 
 [git]
 conventional_commits = true
-filter_unconventional = false
+filter_unconventional = true
 require_conventional = false
-filter_commits = false
+filter_commits = true
 protect_breaking_commits = true
 tag_pattern = "v[0-9].*"
 topo_order = false
@@ -36,18 +36,8 @@ commit_preprocessors = [
 ]
 
 commit_parsers = [
-  { message = "^feat", group = "<!-- 0 -->Added" },
-  { message = "^fix", group = "<!-- 1 -->Fixed" },
-  { message = "^perf", group = "<!-- 2 -->Performance" },
-  { message = "^revert", group = "<!-- 3 -->Changed" },
-  { message = "^docs?", group = "<!-- 4 -->Documentation" },
-  { message = "^style", group = "<!-- 5 -->Internally Changed" },
-  { message = "^refactor", group = "<!-- 5 -->Internally Changed" },
-  { message = "^test", group = "<!-- 5 -->Internally Changed" },
-  { message = "^build", group = "<!-- 5 -->Internally Changed" },
-  { message = "^ci", group = "<!-- 5 -->Internally Changed" },
-  { message = "^chore", group = "<!-- 5 -->Internally Changed" },
-  { message = "^release", group = "<!-- 5 -->Internally Changed" },
-  { message = "^wip", group = "<!-- 5 -->Internally Changed" },
-  { message = "^.*", group = "<!-- 5 -->Internally Changed" },
+  { breaking = true, group = "<!-- 0 -->Breaking Changes" },
+  { message = "^feat", group = "<!-- 1 -->Added" },
+  { message = "^fix", group = "<!-- 2 -->Fixed" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
 ]

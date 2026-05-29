@@ -5,7 +5,6 @@ on:
     branches:
       - main
     paths-ignore:
-      - CHANGELOG.md
       - version.txt
   workflow_dispatch:
 
@@ -93,7 +92,8 @@ jobs:
           NEXT_VERSION="$MAJOR.$MINOR.$PATCH"
 
           printf '%s\n' "$NEXT_VERSION" > version.txt
-          git cliff "$RANGE" --unreleased --tag "v$NEXT_VERSION" --strip header --prepend CHANGELOG.md
+          mkdir -p build/release
+          git cliff "$RANGE" --unreleased --tag "v$NEXT_VERSION" --strip all --output build/release/PR_BODY.md
 
           {
             echo "changed=true"
@@ -107,8 +107,7 @@ jobs:
           branch: release/v${{ steps.prepare.outputs.version }}
           delete-branch: true
           add-paths: |
-            CHANGELOG.md
             version.txt
           commit-message: "release: バージョンを${{ steps.prepare.outputs.version }}に更新"
           title: "release: v${{ steps.prepare.outputs.version }}"
-          body-path: CHANGELOG.md
+          body-path: build/release/PR_BODY.md
