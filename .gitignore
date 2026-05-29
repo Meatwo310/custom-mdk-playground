@@ -41,3 +41,5 @@ repo/
 
 ### Custom ###
 run-*/
+.env*
+!.env.example
