@@ -27,15 +27,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Fetch upstream template history
-        run: |
-          if git remote get-url upstream >/dev/null 2>&1; then
-            git remote set-url upstream https://github.com/Meatwo310/custom-mdk.git
-          else
-            git remote add upstream https://github.com/Meatwo310/custom-mdk.git
-          fi
-          git fetch upstream main --tags
-
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff
 
@@ -43,24 +34,15 @@ jobs:
         id: prepare
         run: |
           CURRENT_VERSION=$(tr -d '[:space:]' < version.txt)
-          CURRENT_TAG="v$CURRENT_VERSION"
-
-          if git rev-parse --verify --quiet "refs/tags/$CURRENT_TAG" >/dev/null; then
-            RANGE="$CURRENT_TAG..HEAD"
-          else
-            RANGE="upstream/main..HEAD"
+          PREVIOUS_TAG=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)
+          if [[ -z "$PREVIOUS_TAG" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No previous release tag was found. Create the first release with empty release notes first."
+            exit 0
           fi
+          RANGE="$PREVIOUS_TAG..HEAD"
 
-          : > .cliffignore
-          if [[ "$RANGE" != "upstream/main..HEAD" ]]; then
-            ALL_COMMITS=$(mktemp)
-            DOWNSTREAM_COMMITS=$(mktemp)
-            git rev-list "$RANGE" | sort > "$ALL_COMMITS"
-            git rev-list "$RANGE" --not upstream/main | sort > "$DOWNSTREAM_COMMITS"
-            comm -23 "$ALL_COMMITS" "$DOWNSTREAM_COMMITS" > .cliffignore
-          fi
-
-          mapfile -t commits < <(git rev-list --reverse "$RANGE" --not upstream/main)
+          mapfile -t commits < <(git rev-list --reverse "$RANGE")
           BUMP=none
           BREAKING_RE='^[a-zA-Z]+(\([^)]+\))?!:'
           FEAT_RE='^feat(\([^)]+\))?:'
