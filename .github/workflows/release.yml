@@ -8,6 +8,7 @@ on:
         required: true
         type: choice
         options:
+          - '⏭️ none'
           - '🩹 patch'
           - '✨ minor'
           - '💥 major'
@@ -35,6 +36,10 @@ jobs:
           BUMP: ${{ inputs.bump }}
         run: |
           case "$BUMP" in
+            '⏭️ none')
+              echo "Skipping version bump."
+              exit 0
+              ;;
             '🩹 patch') LEVEL=patch ;;
             '✨ minor') LEVEL=minor ;;
             '💥 major') LEVEL=major ;;
