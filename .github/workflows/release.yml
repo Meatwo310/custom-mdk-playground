@@ -47,6 +47,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Read mod name
+        run: |
+          chmod u+x ./gradlew
+          MOD_NAME=$(./gradlew -q properties --property modName | awk -F': ' '/^modName: / { print $2; exit }')
+          if [[ -z "$MOD_NAME" ]]; then
+            echo "::error::Could not read modName from ./gradlew properties."
+            exit 1
+          fi
+          echo "MOD_NAME=$MOD_NAME" >> "$GITHUB_ENV"
+
       - name: Detect platform projects
         id: detect
         run: |
@@ -86,7 +96,7 @@ jobs:
         run: |
           PREVIOUS_TAG=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)
           if [[ -z "$PREVIOUS_TAG" ]]; then
-            : > build/release/RELEASE_NOTES.md
+            echo "First release of $MOD_NAME." > build/release/RELEASE_NOTES.md
           else
             git cliff "$PREVIOUS_TAG..HEAD" --unreleased --tag "$RELEASE_TAG" --strip all --output build/release/RELEASE_NOTES.md
           fi
