@@ -39,3 +39,21 @@ chore(1.18.2-forge,1.19.2-forge): bump forge versions
 fix(1.20.1): resolve issue across all 1.20.1 loaders
 feat(fabric): add Mod Menu integration across Fabric targets
 ```
+
+## MDK Template Changes
+
+When committing changes to the MDK template itself, use `mdk` as the type so
+that downstream mod release notes can exclude them.
+
+For changes that would otherwise use `feat` or `fix`, use the scope rules above
+to identify the affected subprojects, Minecraft version, or loader. For other
+changes, use the scope to preserve the usual type, such as `build`, `ci`, or
+`docs`.
+
+```
+mdk(26.1.2-fabric): add config screen support
+mdk(1.20.1-forge): resolve startup crash
+mdk(fabric): update Mod Menu integration across Fabric targets
+mdk(ci): add release workflow
+mdk(build): move the mod version to version.txt
+```
