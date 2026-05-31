@@ -11,11 +11,13 @@ body = """
 {% endif -%}
 
 {% for group, commits in commits | filter(attribute="merge_commit", value=false) | group_by(attribute="group") %}
+{% if group != "<!-- 9 -->MDK" %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
 - {% if commit.scope %}{% for scope in commit.scope | split(pat=",") %}`{{ scope | trim }}`{% if not loop.last %}, {% endif %}{% endfor %}: {% endif %}{{ commit.message | split(pat="\n") | first | trim }}\
 {% if commit.remote.pr_number %} in [#{{ commit.remote.pr_number }}](https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}/pull/{{ commit.remote.pr_number }}){%- endif -%}
 {% endfor %}
+{% endif %}
 {% endfor %}
 """
 
@@ -36,6 +38,7 @@ commit_preprocessors = [
 ]
 
 commit_parsers = [
+  { message = "^mdk", group = "<!-- 9 -->MDK" },
   { breaking = true, group = "<!-- 0 -->Breaking Changes" },
   { message = "^feat", group = "<!-- 1 -->Added" },
   { message = "^fix", group = "<!-- 2 -->Fixed" },
