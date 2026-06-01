@@ -1,0 +1,112 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - name: Read release tag
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            echo "::error::Publish must be dispatched from a tag ref. Received: $GITHUB_REF"
+            exit 1
+          fi
+          echo "RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+      - name: Download release jars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null; then
+            echo "::error::GitHub Release for tag $RELEASE_TAG does not exist."
+            exit 1
+          fi
+
+          mkdir -p build/publish/libs
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.jar' \
+            --dir build/publish/libs
+
+          if ! find build/publish/libs -maxdepth 1 -type f -name '*.jar' -print -quit | grep -q .; then
+            echo "::error::GitHub Release for tag $RELEASE_TAG does not contain any jar assets."
+            exit 1
+          fi
+
+          ls -la build/publish/libs
+
+      - name: Detect artifact groups
+        id: detect
+        run: |
+          artifact_or_empty() {
+            if [[ -f "build/publish/libs/$1" ]]; then
+              printf '%s' "$1"
+            fi
+          }
+
+          MATRIX=$(
+            find build/publish/libs -maxdepth 1 -type f -name '*.jar' -exec basename {} \; |
+              sort |
+              while IFS= read -r jar; do
+                case "$jar" in
+                  *-sources.jar|*-dev.jar|*-javadoc.jar) continue ;;
+                esac
+
+                basename=${jar%.jar}
+                jq -cn \
+                  --arg jar "$jar" \
+                  --arg sources "$(artifact_or_empty "$basename-sources.jar")" \
+                  --arg dev "$(artifact_or_empty "$basename-dev.jar")" \
+                  --arg javadoc "$(artifact_or_empty "$basename-javadoc.jar")" \
+                  '{jar: $jar, sources: $sources, dev: $dev, javadoc: $javadoc}'
+              done |
+              jq -sc '.'
+          )
+
+          if [[ "$MATRIX" == '[]' ]]; then
+            echo "::error::GitHub Release for tag $RELEASE_TAG does not contain any primary jar assets."
+            exit 1
+          fi
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "::group::Artifact groups"
+          jq . <<< "$MATRIX"
+          echo "::endgroup::"
+
+  publish:
+    needs: detect
+    name: publish (${{ matrix.jar }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Download artifact group
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JAR: ${{ matrix.jar }}
+          SOURCES_JAR: ${{ matrix.sources }}
+          DEV_JAR: ${{ matrix.dev }}
+          JAVADOC_JAR: ${{ matrix.javadoc }}
+        run: |
+          mkdir -p build/publish/libs
+          for artifact in "$JAR" "$SOURCES_JAR" "$DEV_JAR" "$JAVADOC_JAR"; do
+            if [[ -n "$artifact" ]]; then
+              gh release download "$GITHUB_REF_NAME" \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern "$artifact" \
+                --dir build/publish/libs
+            fi
+          done
+
+          ls -la build/publish/libs
