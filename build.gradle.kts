@@ -89,6 +89,42 @@ tasks.register("writeCiBuildMatrix") {
     }
 }
 
+tasks.register("writeReleaseManifest") {
+    val outputFile = layout.buildDirectory.file("release/manifest.json")
+    val ciBuildProjects = (gradle.extensions.extraProperties["ciBuildProjectNames"] as List<*>)
+        .map { it.toString() }
+    val releaseVersion = providers.fileContents(layout.projectDirectory.file("version.txt"))
+        .asText
+        .map { it.trim() }
+        .get()
+    val platforms = ciBuildProjects.map { projectName ->
+        val targetProject = project(":$projectName")
+        val loader = projectName.substringAfterLast("-")
+        val minecraftVersion = targetProject.property("minecraftVersion").toString()
+        buildMap {
+            put("artifact", "${targetProject.property("modId")}-$minecraftVersion-$loader-v$releaseVersion.jar")
+            put("version", "$minecraftVersion-$loader-v$releaseVersion")
+            put("loaders", listOf(if (loader == "neo") "neoforge" else loader))
+            put("gameVersions", listOf(targetProject.findProperty("minecraftVersionRange")?.toString() ?: minecraftVersion))
+            targetProject.findProperty("javaVersion")?.toString()?.let { put("java", listOf(it)) }
+        }
+    }
+
+    inputs.property("platforms", platforms)
+    outputs.file(outputFile)
+
+    doLast {
+        val json = JsonOutput.prettyPrint(JsonOutput.toJson(mapOf(
+            "schemaVersion" to 1,
+            "platforms" to platforms,
+        )))
+        outputFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("$json\n")
+        }
+    }
+}
+
 with(System.getProperties()) {
     val version = get("java.version")
     val vmVersion = get("java.vm.version")

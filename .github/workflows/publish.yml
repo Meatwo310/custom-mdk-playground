@@ -43,14 +43,39 @@ jobs:
 
           ls -la build/publish/libs
 
+      - name: Download release manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern manifest.json \
+            --dir build/publish
+          jq . build/publish/manifest.json
+
       - name: Detect artifact groups
         id: detect
         run: |
+          jq -e '.schemaVersion == 1' build/publish/manifest.json > /dev/null
+
           artifact_or_empty() {
             if [[ -f "build/publish/libs/$1" ]]; then
               printf '%s' "$1"
             fi
           }
+
+          while IFS= read -r jar; do
+            case "$jar" in
+              *-sources.jar|*-dev.jar|*-javadoc.jar) continue ;;
+            esac
+
+            if ! jq -e --arg artifact "$jar" \
+              '[.platforms[] | select(.artifact == $artifact)] | length == 1' \
+              build/publish/manifest.json > /dev/null; then
+              echo "::error::Release manifest must describe primary jar $jar exactly once."
+              exit 1
+            fi
+          done < <(find build/publish/libs -maxdepth 1 -type f -name '*.jar' -exec basename {} \; | sort)
 
           MATRIX=$(
             find build/publish/libs -maxdepth 1 -type f -name '*.jar' -exec basename {} \; |
@@ -61,12 +86,23 @@ jobs:
                 esac
 
                 basename=${jar%.jar}
+                platform=$(jq -ce --arg artifact "$jar" '.platforms[] | select(.artifact == $artifact)' build/publish/manifest.json)
                 jq -cn \
                   --arg jar "$jar" \
                   --arg sources "$(artifact_or_empty "$basename-sources.jar")" \
                   --arg dev "$(artifact_or_empty "$basename-dev.jar")" \
                   --arg javadoc "$(artifact_or_empty "$basename-javadoc.jar")" \
-                  '{jar: $jar, sources: $sources, dev: $dev, javadoc: $javadoc}'
+                  --argjson platform "$platform" \
+                  '{
+                    jar: $jar,
+                    sources: $sources,
+                    dev: $dev,
+                    javadoc: $javadoc,
+                    version: $platform.version,
+                    loaders: ($platform.loaders | join("\n")),
+                    game_versions: ($platform.gameVersions | join("\n")),
+                    java: (($platform.java // []) | join("\n"))
+                  }'
               done |
               jq -sc '.'
           )
@@ -109,4 +145,39 @@ jobs:
             fi
           done
 
+          gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json body \
+            --jq .body > build/publish/RELEASE_NOTES.md
+
           ls -la build/publish/libs
+
+      - name: Validate publish configuration
+        env:
+          MODRINTH_ID: ${{ vars.MODRINTH_ID }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_ID: ${{ vars.CURSEFORGE_ID }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          for variable in MODRINTH_ID MODRINTH_TOKEN CURSEFORGE_ID CURSEFORGE_TOKEN; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::$variable must be configured."
+              exit 1
+            fi
+          done
+
+      - name: Publish to Modrinth and CurseForge
+        uses: Kir-Antipov/mc-publish@v3.3.0
+        with:
+          modrinth-id: ${{ vars.MODRINTH_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-id: ${{ vars.CURSEFORGE_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          files: build/publish/libs/*.jar
+          name: ${{ matrix.version }}
+          version: ${{ matrix.version }}
+          changelog-file: build/publish/RELEASE_NOTES.md
+          loaders: ${{ matrix.loaders }}
+          game-versions: ${{ matrix.game_versions }}
+          game-version-filter: releases
+          java: ${{ matrix.java }}

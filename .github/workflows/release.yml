@@ -159,6 +159,11 @@ jobs:
           test -n "$(find build/release/libs -maxdepth 1 -type f -name '*.jar' -print -quit)"
           ls -la build/release/libs
 
+      - name: Generate release manifest
+        run: |
+          ./gradlew --configuration-cache --no-daemon writeReleaseManifest
+          jq . build/release/manifest.json
+
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff
 
@@ -183,4 +188,6 @@ jobs:
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           body_path: build/release/RELEASE_NOTES.md
-          files: build/release/libs/*.jar
+          files: |
+            build/release/libs/*.jar
+            build/release/manifest.json
